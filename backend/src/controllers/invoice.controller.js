@@ -571,7 +571,7 @@ export async function finalizeInvoice(req, res, next) {
     // 3. Send Email via Resend
     // Find a recipient email (fallback to a dummy one if no contacts exist)
     const toEmail = invoice.client.contacts?.[0]?.email
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'; 
+    const fromEmail = process.env.RESEND_FROM_EMAIL; 
 
     // Include the checkout URL in the email body
 const emailHtml = `
