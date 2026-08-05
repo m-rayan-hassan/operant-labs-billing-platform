@@ -32,7 +32,7 @@ export const REFRESH_COOKIE_NAME = 'refresh_token';
 export const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   path: '/api/auth/refresh',
   maxAge: REFRESH_TTL_MS,
 };
