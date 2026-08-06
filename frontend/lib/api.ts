@@ -1,92 +1,85 @@
 import axios from 'axios';
 
-// The backend is running on port 5000, as configured in previous backend context.
-// Default to localhost:5000 if no env var is set.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008/api';
+// All requests go through the Next.js rewrite proxy (/api → backend).
+// This keeps the httpOnly refresh cookie first-party to the Vercel domain,
+// which is the key requirement for cross-reload session persistence.
+// NEVER use a direct backend URL here — it will break cookie auth.
+const API_BASE_URL = '/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // IMPORTANT: Needed to send the httpOnly refresh cookie
 });
 
-// Interceptor to attach the access token to requests (if stored in memory/localStorage)
-// Wait, we'll store the access token in memory or localStorage.
-// Let's assume we store it in localStorage for now, since it's a SPA-like app on Next.js client side.
+// Access token lives in memory only (module scope) — never persisted to
+// localStorage. This keeps it safe from XSS attacks. On page reload the token
+// is gone, but a fresh one is obtained via /auth/refresh (httpOnly cookie).
+let accessToken: string | null = null;
+
+export const getAccessToken = () => accessToken;
+export const setAccessToken = (token: string) => { accessToken = token; };
+export const clearAccessToken = () => { accessToken = null; };
+
+// ── Single-flight refresh mechanism ──────────────────────────────────────────
+// Guarantees at most ONE /auth/refresh request is in-flight at any time.
+// Both the initial session restore (useAuth) and the 401 response interceptor
+// share this promise, preventing concurrent refreshes that would trigger the
+// backend's token-reuse detection and revoke the entire session.
+let refreshPromise: Promise<string> | null = null;
+
+const doRefresh = (): Promise<string> => {
+  // If a refresh is already in-flight, return the same promise.
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = axios
+    .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+    .then((res) => {
+      const token = res.data.accessToken;
+      setAccessToken(token);
+      return token;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+};
+
+// Public alias used by useAuth on mount.
+export const refreshAccessToken = doRefresh;
+
+// ── Interceptors ─────────────────────────────────────────────────────────────
+
+// Request interceptor: attach access token to every outgoing request.
 api.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (accessToken && config.headers) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
   }
   return config;
 });
 
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (value?: unknown) => void, reject: (reason?: any) => void }> = [];
-
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-};
-
-// Interceptor to handle 401 Unauthorized errors and attempt token refresh
+// Response interceptor: on 401, attempt a single-flight refresh and retry.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
-    // If error is 401 and it's not a retry already
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise(function(resolve, reject) {
-          failedQueue.push({ resolve, reject });
-        }).then(token => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
-        }).catch(err => {
-          return Promise.reject(err);
-        });
-      }
 
+    if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      isRefreshing = true;
-      
+
       try {
-        // Attempt to refresh the token
-        const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
-          withCredentials: true // send refresh cookie
-        });
-        const newAccessToken = refreshResponse.data.accessToken;
-        
-        // Save the new token
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('access_token', newAccessToken);
-        }
-        
-        processQueue(null, newAccessToken);
-        
-        // Update header and retry the original request
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        const newToken = await doRefresh();
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        // If refresh fails, we log out the user
+        clearAccessToken();
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('access_token');
-          // Optionally redirect to login page here, or handle in auth context
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
       }
     }
-    
+
     return Promise.reject(error);
-  }
+  },
 );

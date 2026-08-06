@@ -7,9 +7,15 @@ import Link from "next/link";
 
 interface Stats {
   monthlyRevenue: number;
+  prevMonthRevenue: number;
   annualRecurring: number;  // backend field name
+  prevYearRecurring: number;
   outstanding: number;
   collectedMTD: number;     // backend field name (capital MTD)
+  totalCollected: number;
+  overdueCount: number;
+  pendingCount: number;
+  totalInvoices: number;
 }
 
 export default function DashboardPage() {
@@ -29,12 +35,56 @@ export default function DashboardPage() {
     };
 
     fetchDashboardData();
+
+    const REFRESH_INTERVAL = 30000;
+    const intervalId = setInterval(fetchDashboardData, REFRESH_INTERVAL);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchDashboardData();
+    };
+    const handleFocus = () => fetchDashboardData();
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   const formatCurrency = (value: string | number) => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return "$0.00";
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+  };
+
+  // Percent change vs previous period. Returns null when the previous period
+  // had no revenue (meaningful % would be undefined), otherwise the delta.
+  const getChangePct = (current: number, previous: number): number | null => {
+    if (previous <= 0) return current > 0 ? null : 0;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const pctMonthly = getChangePct(stats?.monthlyRevenue ?? 0, stats?.prevMonthRevenue ?? 0);
+  const pctAnnual = getChangePct(stats?.annualRecurring ?? 0, stats?.prevYearRecurring ?? 0);
+
+  const renderDelta = (pct: number | null, periodLabel: string) => {
+    if (pct === null) {
+      return (
+        <span className="text-green-500 flex items-center gap-1">
+          <ArrowUpRight className="h-3 w-3" /> New this {periodLabel}
+        </span>
+      );
+    }
+    const up = pct >= 0;
+    return (
+      <span className={`flex items-center gap-1 ${up ? "text-green-500" : "text-red-500"}`}>
+        {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+        {up ? "+" : ""}{pct.toFixed(1)}% {periodLabel === "month" ? "from last month" : "from last year"}
+      </span>
+    );
   };
 
   if (loading) {
@@ -71,7 +121,7 @@ export default function DashboardPage() {
           </div>
           <div className="text-2xl font-bold">{formatCurrency(stats?.monthlyRevenue || 0)}</div>
           <div className="text-xs text-[var(--foreground-variant)] mt-2 flex items-center gap-1">
-            <span className="text-green-500 flex items-center"><ArrowUpRight className="h-3 w-3" /> +12%</span> from last month
+            {renderDelta(pctMonthly, "month")}
           </div>
         </div>
 
@@ -85,7 +135,7 @@ export default function DashboardPage() {
           </div>
           <div className="text-2xl font-bold">{formatCurrency(stats?.annualRecurring || 0)}</div>
           <div className="text-xs text-[var(--foreground-variant)] mt-2 flex items-center gap-1">
-            <span className="text-green-500 flex items-center"><ArrowUpRight className="h-3 w-3" /> +4.2%</span> from last year
+            {renderDelta(pctAnnual, "year")}
           </div>
         </div>
 
@@ -98,8 +148,8 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="text-2xl font-bold">{formatCurrency(stats?.outstanding || 0)}</div>
-          <div className="text-xs text-[var(--foreground-variant)] mt-2 flex items-center gap-1">
-            <span className="text-red-500 flex items-center"><ArrowDownRight className="h-3 w-3" /> Needs attention</span>
+          <div className="text-xs text-[var(--foreground-variant)] mt-2">
+            {stats?.overdueCount ?? 0} overdue · {stats?.pendingCount ?? 0} pending
           </div>
         </div>
 
@@ -113,7 +163,7 @@ export default function DashboardPage() {
           </div>
           <div className="text-2xl font-bold">{formatCurrency(stats?.collectedMTD || 0)}</div>
           <div className="text-xs text-[var(--foreground-variant)] mt-2">
-            This month
+            {formatCurrency(stats?.totalCollected ?? 0)} collected all time
           </div>
         </div>
       </div>

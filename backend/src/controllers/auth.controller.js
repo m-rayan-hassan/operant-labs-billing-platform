@@ -180,7 +180,13 @@ export async function logout(req, res, next) {
                 .set({ revoked: true })
                 .where(eq(refreshTokens.tokenHash, tokenHash));
         }
+        // Must pass the same attributes used when setting the cookie, otherwise
+        // the browser will ignore the clear directive (especially in production
+        // where secure + sameSite:none are required).
         res.clearCookie(REFRESH_COOKIE_NAME, {
+            httpOnly: REFRESH_COOKIE_OPTIONS.httpOnly,
+            secure: REFRESH_COOKIE_OPTIONS.secure,
+            sameSite: REFRESH_COOKIE_OPTIONS.sameSite,
             path: REFRESH_COOKIE_OPTIONS.path,
         });
         res.status(204).send();

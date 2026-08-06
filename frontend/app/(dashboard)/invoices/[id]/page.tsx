@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import axios from "axios";
 import { api } from "../../../../lib/api";
@@ -14,6 +14,9 @@ import {
     CheckCircle2,
     History,
     X,
+    Edit,
+    Download,
+    Eye,
 } from "lucide-react";
 
 interface InvoiceItem {
@@ -54,10 +57,13 @@ export default function InvoiceDetailsPage() {
     const [emailSubject, setEmailSubject] = useState("");
     const [emailMessage, setEmailMessage] = useState("");
 
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [pdfLoading, setPdfLoading] = useState(false);
+    const pdfObjectUrlRef = useRef<string | null>(null);
+
     const fetchInvoice = useCallback(async () => {
         try {
             const res = await api.get(`/invoices/${id}`);
-            // Backend returns the invoice object directly
             setInvoice(res.data);
         } catch (err: unknown) {
             console.error("Failed to fetch invoice", err);
@@ -67,15 +73,53 @@ export default function InvoiceDetailsPage() {
         }
     }, [id]);
 
+    const fetchPdf = useCallback(async () => {
+        if (!id) return;
+        setPdfLoading(true);
+        try {
+            const res = await api.get(`/invoices/${id}/pdf`, {
+                responseType: "blob",
+            });
+            // Revoke previous object URL to avoid memory leaks
+            if (pdfObjectUrlRef.current) {
+                URL.revokeObjectURL(pdfObjectUrlRef.current);
+            }
+            const url = URL.createObjectURL(
+                new Blob([res.data], { type: "application/pdf" }),
+            );
+            pdfObjectUrlRef.current = url;
+            setPdfUrl(url);
+        } catch (err) {
+            console.error("Failed to fetch PDF", err);
+        } finally {
+            setPdfLoading(false);
+        }
+    }, [id]);
+
+    // Clean up object URL on unmount
+    useEffect(() => {
+        return () => {
+            if (pdfObjectUrlRef.current) {
+                URL.revokeObjectURL(pdfObjectUrlRef.current);
+            }
+        };
+    }, []);
+
     useEffect(() => {
         if (!id) return;
-
         const timeoutId = window.setTimeout(() => {
             void fetchInvoice();
         }, 0);
-
         return () => window.clearTimeout(timeoutId);
     }, [id, fetchInvoice]);
+
+    // Re-fetch PDF every time the invoice data changes
+    useEffect(() => {
+        if (invoice) {
+            void fetchPdf();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [invoice?.id, invoice?.status]);
 
     const handleAction = async (
         action: string,
@@ -227,6 +271,13 @@ export default function InvoiceDetailsPage() {
                 <div className="flex flex-wrap gap-3">
                     {invoice.status === "DRAFT" && (
                         <>
+                            <Link
+                                href={`/invoices/${id}/edit`}
+                                className="btn-outline"
+                            >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit Draft
+                            </Link>
                             <button
                                 className="btn-solid"
                                 onClick={openEmailModal}
@@ -240,6 +291,18 @@ export default function InvoiceDetailsPage() {
                                 Finalize & Send
                             </button>
                         </>
+                    )}
+
+                    {/* Download PDF button — available for all statuses */}
+                    {pdfUrl && (
+                        <a
+                            href={pdfUrl}
+                            download={`${invoice.number}.pdf`}
+                            className="btn-outline"
+                        >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download PDF
+                        </a>
                     )}
 
                     {invoice.status !== "CANCELLED" &&
@@ -491,6 +554,57 @@ export default function InvoiceDetailsPage() {
                             )}
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* ── PDF Preview Section ────────────────────────────────── */}
+            <div className="glass-card overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
+                    <h3 className="font-bold flex items-center gap-2">
+                        <Eye className="h-5 w-5 text-[var(--color-electric-cyan)]" />
+                        PDF Preview
+                    </h3>
+                    <div className="flex items-center gap-3">
+                        {pdfLoading && (
+                            <span className="flex items-center gap-1.5 text-sm text-[var(--foreground-variant)]">
+                                <Loader2 className="animate-spin h-4 w-4" />
+                                Generating…
+                            </span>
+                        )}
+                        {pdfUrl && !pdfLoading && (
+                            <a
+                                href={pdfUrl}
+                                download={`${invoice.number}.pdf`}
+                                className="btn-outline text-sm py-1.5 px-3"
+                            >
+                                <Download className="h-4 w-4 mr-1.5" />
+                                Download PDF
+                            </a>
+                        )}
+                    </div>
+                </div>
+
+                <div className="w-full bg-[var(--surface-dim)]" style={{ height: "780px" }}>
+                    {pdfLoading && !pdfUrl && (
+                        <div className="flex flex-col items-center justify-center h-full gap-4 text-[var(--foreground-variant)]">
+                            <Loader2 className="animate-spin h-10 w-10" />
+                            <p className="text-sm">Generating PDF preview…</p>
+                        </div>
+                    )}
+                    {!pdfLoading && !pdfUrl && (
+                        <div className="flex flex-col items-center justify-center h-full gap-4 text-[var(--foreground-variant)]">
+                            <FileText className="h-12 w-12 opacity-30" />
+                            <p className="text-sm">PDF preview unavailable</p>
+                        </div>
+                    )}
+                    {pdfUrl && (
+                        <iframe
+                            key={pdfUrl}
+                            src={pdfUrl}
+                            className="w-full h-full border-0"
+                            title={`Invoice ${invoice.number} PDF`}
+                        />
+                    )}
                 </div>
             </div>
 

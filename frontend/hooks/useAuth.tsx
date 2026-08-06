@@ -1,7 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { api } from "../lib/api";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import { api, setAccessToken, refreshAccessToken, clearAccessToken } from "../lib/api";
 import { useRouter } from "next/navigation";
 
 interface User {
@@ -23,37 +23,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  // Prevents React Strict Mode's double-mount from firing two simultaneous
+  // refresh requests. Two concurrent calls with the same cookie would trigger
+  // token reuse detection on the backend, revoking the entire token family.
+  const didRefresh = useRef(false);
 
   useEffect(() => {
-    // On mount, if we have an access token, try to fetch the user profile
-    // Note: The context says `GET /auth/me` is planned. If it's not implemented yet,
-    // we could rely on checking if token exists and decodes, but let's assume we can fetch it,
-    // or just rely on a simpler check. For now, if we have a token we'll assume logged in.
-    // If we get a 401 later, the interceptor will handle refresh and redirect to login if it fails.
-    
-    const checkAuth = async () => {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        try {
-          const res = await api.get("/auth/me");
-          setUser({
-            id: res.data.id,
-            email: res.data.email,
-            role: res.data.role
-          });
-        } catch (e) {
-          console.error("Failed to fetch user profile", e);
-          localStorage.removeItem("access_token");
-        }
+    if (didRefresh.current) return;
+    didRefresh.current = true;
+
+    // On mount: the access token is memory-only and is lost on reload, but the
+    // httpOnly refresh cookie survives. Exchange it for a fresh access token.
+    const refreshAndFetchUser = async () => {
+      try {
+        await refreshAccessToken();
+
+        const res = await api.get("/auth/me");
+        setUser({
+          id: res.data.id,
+          email: res.data.email,
+          role: res.data.role,
+        });
+      } catch {
+        // No valid refresh cookie (fresh visit, logged out, or expired) —
+        // expected. Just leave the user logged out.
       }
       setLoading(false);
     };
 
-    checkAuth();
+    refreshAndFetchUser();
   }, []);
 
   const login = (accessToken: string, loggedInUser: User) => {
-    localStorage.setItem("access_token", accessToken);
+    setAccessToken(accessToken);
     setUser(loggedInUser);
     router.push("/"); // Redirect to dashboard
   };
@@ -64,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Logout failed on server", error);
     } finally {
-      localStorage.removeItem("access_token");
+      clearAccessToken();
       setUser(null);
       router.push("/login");
     }

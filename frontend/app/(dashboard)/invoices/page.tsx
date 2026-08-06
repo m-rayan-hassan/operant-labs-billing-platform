@@ -162,7 +162,7 @@ export default function InvoicesPage() {
                     <td className="px-6 py-4 text-right">
                       <Link 
                         href={`/invoices/${invoice.id}`}
-                        className="inline-flex items-center p-2 text-[var(--foreground-variant)] hover:text-[var(--foreground)] hover:bg-[var(--border-subtle)] rounded-md transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="inline-flex items-center p-2 text-[var(--foreground-variant)] hover:text-[var(--foreground)] hover:bg-[var(--border-subtle)] rounded-md transition-colors"
                       >
                         <ArrowRight className="h-4 w-4" />
                       </Link>

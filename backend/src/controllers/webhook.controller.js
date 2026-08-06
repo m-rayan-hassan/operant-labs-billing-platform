@@ -34,14 +34,13 @@ export const stripeWebhook = async (req, res) => {
             
         if (updatedInvoices.length > 0) {
            const invoice = updatedInvoices[0];
-           // Record the payment
+           // Record the payment — stripeEventId dedupes webhook retries
            await db.insert(payments).values({
                invoiceId: invoice.id,
                amount: invoice.total.toString(),
                method: 'CREDIT_CARD',
-               reference: session.payment_intent || stripeSessionId,
-               notes: 'Paid via Stripe Checkout',
-           });
+               stripeEventId: event.id,
+           }).onConflictDoNothing({ target: payments.stripeEventId });
            console.log(`Invoice ${invoice.id} marked as PAID via webhook`);
         }
       }

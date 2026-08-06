@@ -4,6 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { LayoutDashboard, Users, FileText, Settings, LogOut, Loader2, Menu, X, FileEdit, Briefcase, CreditCard, RefreshCw, Receipt, LineChart, PieChart, Calculator } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -73,7 +74,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-[var(--surface-bright)] border-r border-[var(--border-subtle)] transform transition-transform duration-300 md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-[var(--border-subtle)]">
-          <div className="font-bold text-xl tracking-tight">Operant<span className="text-[var(--color-electric-cyan)]">Billing</span></div>
+          
+          {/* Logo & Text Wrapper (Logo on the left, bigger size) */}
+          <div className="flex items-center gap-0">
+            <Image src="/logo.png" alt="Operant Labs Logo" width={47} height={47} className="object-contain" />
+            <div className="font-bold text-xl tracking-tight">Operant<span className="text-[var(--color-electric-cyan)]">Billing</span></div>
+          </div>
+
           <button className="md:hidden" onClick={() => setMobileMenuOpen(false)}>
             <X className="h-5 w-5 text-[var(--foreground-variant)]" />
           </button>
@@ -133,7 +140,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setMobileMenuOpen(true)}>
             <Menu className="h-6 w-6 text-[var(--foreground)]" />
           </button>
-          <div className="ml-4 font-bold text-lg tracking-tight">Operant<span className="text-[var(--color-electric-cyan)]">Billing</span></div>
+          
+          {/* Mobile Logo & Text Wrapper */}
+          <div className="ml-4 flex items-center gap-2.5">
+            <Image src="/logo.png" alt="Operant Labs Logo" width={32} height={32} className="object-contain" />
+            <div className="font-bold text-lg tracking-tight">Operant<span className="text-[var(--color-electric-cyan)]">Billing</span></div>
+          </div>
         </div>
         
         {/* Page content */}

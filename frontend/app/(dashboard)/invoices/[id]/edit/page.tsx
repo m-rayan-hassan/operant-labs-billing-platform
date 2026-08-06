@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { api } from "../../../../lib/api";
+import { api } from "../../../../../lib/api";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Plus, Trash2, Calendar, DollarSign } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 
 interface Client {
   id: string;
@@ -30,10 +30,12 @@ const invoiceSchema = z.object({
 
 type InvoiceFormValues = z.infer<typeof invoiceSchema>;
 
-export default function NewInvoicePage() {
+export default function EditInvoicePage() {
   const router = useRouter();
+  const { id } = useParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [loadingInvoice, setLoadingInvoice] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -41,15 +43,10 @@ export default function NewInvoicePage() {
     control,
     handleSubmit,
     watch,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema),
-    defaultValues: {
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      currency: "USD",
-      items: [{ description: "", quantity: 1, rate: 0 }],
-    }
   });
 
   const { fields, append, remove } = useFieldArray({
@@ -57,27 +54,55 @@ export default function NewInvoicePage() {
     name: "items",
   });
 
-  const watchItems = watch("items");
+  const watchItems = watch("items") || [];
   
   const calculateTotal = () => {
     return watchItems.reduce((sum, item) => sum + ((item.quantity || 0) * (item.rate || 0)), 0);
   };
 
   useEffect(() => {
-    const fetchClients = async () => {
+    const fetchClientsAndInvoice = async () => {
       try {
-        const res = await api.get("/clients");
-        // Backend returns { data: [], pagination: {} }
-        const data = res.data.data ?? res.data;
-        setClients(Array.isArray(data) ? data : []);
+        const [clientsRes, invoiceRes] = await Promise.all([
+          api.get("/clients"),
+          api.get(`/invoices/${id}`)
+        ]);
+        
+        const clientsData = clientsRes.data.data ?? clientsRes.data;
+        setClients(Array.isArray(clientsData) ? clientsData : []);
+        setLoadingClients(false);
+
+        const invoice = invoiceRes.data;
+        if (invoice.status !== "DRAFT") {
+            setError("Only DRAFT invoices can be edited");
+            setLoadingInvoice(false);
+            return;
+        }
+
+        reset({
+            clientId: invoice.clientId,
+            issueDate: new Date(invoice.issueDate).toISOString().split('T')[0],
+            dueDate: new Date(invoice.dueDate).toISOString().split('T')[0],
+            currency: invoice.currency,
+            items: invoice.items?.length > 0 ? invoice.items.map((i: any) => ({
+                description: i.description,
+                quantity: parseFloat(i.quantity),
+                rate: parseFloat(i.rate)
+            })) : [{ description: "", quantity: 1, rate: 0 }],
+        });
+
       } catch (err) {
-        console.error("Failed to fetch clients", err);
+        console.error("Failed to fetch data", err);
+        setError("Failed to load invoice details");
       } finally {
         setLoadingClients(false);
+        setLoadingInvoice(false);
       }
     };
-    fetchClients();
-  }, []);
+    if (id) {
+        fetchClientsAndInvoice();
+    }
+  }, [id, reset]);
 
   const onSubmit = async (data: InvoiceFormValues) => {
     setError(null);
@@ -91,31 +116,33 @@ export default function NewInvoicePage() {
         }))
       };
       
-      const res = await api.post("/invoices", payload);
-      // Backend returns the full invoice object directly (not wrapped in data)
-      const newInvoiceId = res.data?.id;
+      await api.put(`/invoices/${id}`, payload);
       
-      if (newInvoiceId) {
-        router.push(`/invoices/${newInvoiceId}`);
-      } else {
-        router.push("/invoices");
-      }
+      router.push(`/invoices/${id}`);
       router.refresh();
-    } catch (err: any) {
-      const apiError = err.response?.data?.error || err.response?.data?.message || "Failed to create invoice";
+    } catch (err: unknown) {
+      const apiError = (err as any).response?.data?.error || (err as any).response?.data?.message || "Failed to update invoice";
       setError(apiError);
     }
   };
 
+  if (loadingInvoice) {
+      return (
+          <div className="flex items-center justify-center h-full min-h-[400px]">
+              <Loader2 className="animate-spin h-8 w-8 text-[var(--foreground-variant)]" />
+          </div>
+      );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/invoices" className="p-2 hover:bg-[var(--surface-dim)] rounded-md transition-colors text-[var(--foreground-variant)] hover:text-[var(--foreground)]">
+        <Link href={`/invoices/${id}`} className="p-2 hover:bg-[var(--surface-dim)] rounded-md transition-colors text-[var(--foreground-variant)] hover:text-[var(--foreground)]">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <div className="section-number">New Invoice</div>
-          <h1 className="text-3xl font-bold tracking-tight">Create Draft</h1>
+          <div className="section-number">Edit Invoice</div>
+          <h1 className="text-3xl font-bold tracking-tight">Update Draft</h1>
         </div>
       </div>
 
@@ -218,7 +245,7 @@ export default function NewInvoicePage() {
                       type="text"
                       placeholder="Service description"
                       className="block w-full px-3 py-2 border border-[var(--border-strong)] rounded-md bg-[var(--surface-bright)] focus:ring-1 focus:ring-[var(--foreground)] focus:outline-none"
-                      {...register(`items.${index}.description`)}
+                      {...register(`items.${index}.description` as const)}
                     />
                     {errors.items?.[index]?.description && (
                       <p className="mt-1 text-xs text-red-600">{errors.items[index]?.description?.message}</p>
@@ -231,7 +258,7 @@ export default function NewInvoicePage() {
                       step="0.01"
                       placeholder="Qty"
                       className="block w-full px-3 py-2 border border-[var(--border-strong)] rounded-md bg-[var(--surface-bright)] focus:ring-1 focus:ring-[var(--foreground)] focus:outline-none"
-                      {...register(`items.${index}.quantity`, { valueAsNumber: true })}
+                      {...register(`items.${index}.quantity` as const, { valueAsNumber: true })}
                     />
                   </div>
                   <div className="w-full sm:w-32">
@@ -247,7 +274,7 @@ export default function NewInvoicePage() {
                         step="0.01"
                         placeholder="Price"
                         className="block w-full pl-7 pr-3 py-2 border border-[var(--border-strong)] rounded-md bg-[var(--surface-bright)] focus:ring-1 focus:ring-[var(--foreground)] focus:outline-none"
-                        {...register(`items.${index}.rate`, { valueAsNumber: true })}
+                        {...register(`items.${index}.rate` as const, { valueAsNumber: true })}
                       />
                     </div>
                   </div>
@@ -282,7 +309,7 @@ export default function NewInvoicePage() {
           </div>
 
           <div className="pt-4 border-t border-[var(--border-subtle)] flex items-center justify-end gap-3">
-            <Link href="/invoices" className="btn-outline">
+            <Link href={`/invoices/${id}`} className="btn-outline">
               Cancel
             </Link>
             <button
@@ -293,7 +320,7 @@ export default function NewInvoicePage() {
               {isSubmitting ? (
                 <Loader2 className="animate-spin h-4 w-4" />
               ) : (
-                "Create Draft"
+                "Save Changes"
               )}
             </button>
           </div>

@@ -8,6 +8,7 @@ import {
   updateStatus,
   deleteInvoice,
   finalizeInvoice,
+  getInvoicePDF,
 } from "../controllers/invoice.controller.js";
 import {
   recordPayment,
@@ -24,6 +25,7 @@ router.get("/:id", getInvoice);
 router.put("/:id", updateInvoice);
 router.put("/:id/status", updateStatus);
 router.post("/:id/finalize", finalizeInvoice);
+router.get("/:id/pdf", getInvoicePDF);
 router.delete("/:id", deleteInvoice);
 
 // Payment sub-routes nested under invoices

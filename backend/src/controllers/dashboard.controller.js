@@ -33,6 +33,32 @@ export async function getStats(req, res, next) {
         ),
       );
 
+    // Previous calendar month, for the "vs last month" delta
+    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [prevMonthRevenueResult] = await db
+      .select({ sum: sql`COALESCE(SUM(amount), 0)` })
+      .from(payments)
+      .where(
+        and(
+          gte(payments.paidAt, startOfPrevMonth),
+          lte(payments.paidAt, startOfThisMonth),
+        ),
+      );
+
+    // Previous 12-month window, for the "vs last year" delta
+    const twentyFourMonthsAgo = new Date(now);
+    twentyFourMonthsAgo.setFullYear(twentyFourMonthsAgo.getFullYear() - 2);
+    const [prevYearRecurringResult] = await db
+      .select({ sum: sql`COALESCE(SUM(amount), 0)` })
+      .from(payments)
+      .where(
+        and(
+          gte(payments.paidAt, twentyFourMonthsAgo),
+          lte(payments.paidAt, twelveMonthsAgo),
+        ),
+      );
+
     // Outstanding: total of PENDING + OVERDUE invoices
     const [outstandingResult] = await db
       .select({ sum: sql`COALESCE(SUM(total), 0)` })
@@ -81,7 +107,9 @@ export async function getStats(req, res, next) {
 
     res.json({
       monthlyRevenue: parseFloat(monthlyRevResult.sum),
+      prevMonthRevenue: parseFloat(prevMonthRevenueResult.sum),
       annualRecurring: parseFloat(annualResult.sum),
+      prevYearRecurring: parseFloat(prevYearRecurringResult.sum),
       outstanding: parseFloat(outstandingResult.sum),
       collectedMTD,
       totalCollected: parseFloat(totalCollectedResult.sum),
