@@ -105,7 +105,7 @@ export default function RegisterPage() {
                                             ? "border-red-300 focus:ring-red-500 focus:border-red-500"
                                             : "border-border-strong focus:ring-(--foreground) focus:border-(--foreground)"
                                     } rounded-md bg-surface-bright text-(--foreground) placeholder-on-surface-variant focus:outline-none focus:ring-1 transition-colors`}
-                                    placeholder="you@operantlabs.com"
+                                    placeholder="you@operantlabs.io"
                                     {...register("email")}
                                 />
                             </div>

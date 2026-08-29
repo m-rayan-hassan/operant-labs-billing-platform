@@ -51,7 +51,7 @@ export default function LoginPage() {
         
         <div className="relative z-10">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2 tracking-tight">Welcome Back</h1>
+            <h1 className="text-3xl font-bold mb-2 tracking-tight">Finance & Billing</h1>
             <p className="text-[var(--foreground-variant)]">Sign in to your account to continue</p>
           </div>
 
@@ -76,7 +76,7 @@ export default function LoginPage() {
                   className={`block w-full pl-10 pr-3 py-2 border ${
                     errors.email ? "border-red-300 focus:ring-red-500 focus:border-red-500" : "border-[var(--border-strong)] focus:ring-[var(--foreground)] focus:border-[var(--foreground)]"
                   } rounded-md bg-[var(--surface-bright)] text-[var(--foreground)] placeholder-[var(--foreground-variant)] focus:outline-none focus:ring-1 transition-colors`}
-                  placeholder="you@example.com"
+                  placeholder="you@operantlabs.io"
                   {...register("email")}
                 />
               </div>
