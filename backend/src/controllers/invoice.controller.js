@@ -11,9 +11,7 @@ const __dirname = path.dirname(__filename);
 import { Resend } from "resend";
 import PDFDocument from "pdfkit";
 
-const stripe = new Stripe(
-    process.env.STRIPE_SECRET_KEY || "sk_test_placeholder",
-);
+
 const resend = new Resend(process.env.RESEND_API_KEY || "re_placeholder");
 
 // ─── Validation Schemas ─────────────────────────────────────────────────────
@@ -679,34 +677,6 @@ export async function finalizeInvoice(req, res, next) {
 
         // 1. Generate PDF
         const pdfBuffer = await generateInvoicePDF(invoice);
-
-        // 2. Generate Stripe Checkout URL
-        const appUrl = process.env.APP_URL || "http://localhost:3000";
-        const session = await stripe.checkout.sessions.create({
-            payment_method_types: ["card"],
-            line_items: [
-                {
-                    price_data: {
-                        currency: invoice.currency.toLowerCase(),
-                        product_data: {
-                            name: `Invoice ${invoice.number}`,
-                            description: `Services for ${invoice.client.name}`,
-                        },
-                        unit_amount: Math.round(
-                            parseFloat(invoice.total) * 100,
-                        ), // Stripe expects cents
-                    },
-                    quantity: 1,
-                },
-            ],
-            mode: "payment",
-            success_url: `https://operantlabs.io`,
-            cancel_url: `https://operantlabs.io`,
-            metadata: { invoiceId: invoice.id },
-            client_reference_id: invoice.clientId,
-            customer_email: invoice.client.contacts?.[0]?.email || undefined,
-        });
-        const checkoutUrl = session.url;
 
         // 3. Send Email via Resend
         // Find a recipient email (fallback to a dummy one if no contacts exist)
